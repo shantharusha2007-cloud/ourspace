@@ -7,12 +7,16 @@ const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
-const DATABASE_FILE = path.join(__dirname, 'database.json');
+const DATABASE_SOURCE = path.join(__dirname, 'database.json');
+const DATABASE_FILE = path.join(process.env.VERCEL ? '/tmp' : __dirname, 'database.json');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 function readDatabase() {
+  if (!fs.existsSync(DATABASE_FILE) && DATABASE_FILE !== DATABASE_SOURCE && fs.existsSync(DATABASE_SOURCE)) {
+    fs.copyFileSync(DATABASE_SOURCE, DATABASE_FILE);
+  }
   if (!fs.existsSync(DATABASE_FILE)) return { users: {}, pairCodes: {}, rooms: {} };
   return JSON.parse(fs.readFileSync(DATABASE_FILE, 'utf8'));
 }
@@ -101,6 +105,11 @@ app.get('/api/rooms/:roomId/messages', (req, res) => {
   const room = database.rooms[req.params.roomId];
   if (!room || !room.memberIds.includes(req.query.userId)) return res.status(403).json({ error: 'Private room access denied.' });
   res.json({ messages: room.messages });
+});
+
+app.use('/api', (error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  res.status(500).json({ error: 'The server could not complete that request.' });
 });
 
 io.use((socket, next) => {
