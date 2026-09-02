@@ -168,4 +168,8 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`Our Space is running at http://localhost:${PORT}`));
+if (require.main === module) {
+  server.listen(PORT, '0.0.0.0', () => console.log(`Our Space is running at http://localhost:${PORT}`));
+}
+
+module.exports = app;
