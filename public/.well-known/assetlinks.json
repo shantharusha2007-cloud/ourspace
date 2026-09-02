@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.trycloudflare.authentic_fought_internship_humor.twa",
+        "sha256_cert_fingerprints": ["93:2E:33:A2:F4:ED:B3:5C:74:BB:02:CE:F6:03:AB:E7:2E:16:32:0B:5C:6D:D8:D5:29:DF:23:BC:5B:7E:E3:0D"]
+      }
+    }]

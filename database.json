@@ -1,0 +1,120 @@
+{
+  "users": {
+    "ea2617b5-f134-4665-ba2f-85f8722cd9fb": {
+      "id": "ea2617b5-f134-4665-ba2f-85f8722cd9fb",
+      "name": "shan",
+      "pairCode": "NGFBBM",
+      "partnerId": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+      "roomId": "room_f397c08c-b02e-4bd4-8ad2-bc5a88960a77"
+    },
+    "d9689e2d-f886-422f-8cb4-1678d0eaefe6": {
+      "id": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+      "name": "ts",
+      "pairCode": "D9567B",
+      "partnerId": "ea2617b5-f134-4665-ba2f-85f8722cd9fb",
+      "roomId": "room_f397c08c-b02e-4bd4-8ad2-bc5a88960a77"
+    },
+    "873ab3c1-fbd1-4f7c-a9aa-2a22fe4dc53a": {
+      "id": "873ab3c1-fbd1-4f7c-a9aa-2a22fe4dc53a",
+      "name": "ts",
+      "pairCode": "7PY8V9",
+      "partnerId": null,
+      "roomId": null
+    },
+    "f335a9c2-3ff6-45f0-8b9d-b1d432b05bdd": {
+      "id": "f335a9c2-3ff6-45f0-8b9d-b1d432b05bdd",
+      "name": "shan",
+      "pairCode": "U7U7GU",
+      "partnerId": "7622e55a-2e61-427c-916e-acf3a8125c56",
+      "roomId": "room_d3b65cad-5bfc-4254-8e6e-1844c4bbdf30"
+    },
+    "7622e55a-2e61-427c-916e-acf3a8125c56": {
+      "id": "7622e55a-2e61-427c-916e-acf3a8125c56",
+      "name": "ts",
+      "pairCode": "843WAJ",
+      "partnerId": "f335a9c2-3ff6-45f0-8b9d-b1d432b05bdd",
+      "roomId": "room_d3b65cad-5bfc-4254-8e6e-1844c4bbdf30"
+    },
+    "5e63c5cf-60ba-4f2d-bdca-64b0ef9e853f": {
+      "id": "5e63c5cf-60ba-4f2d-bdca-64b0ef9e853f",
+      "name": "Shan",
+      "pairCode": "6UCAWA",
+      "partnerId": null,
+      "roomId": null
+    }
+  },
+  "pairCodes": {
+    "NGFBBM": "ea2617b5-f134-4665-ba2f-85f8722cd9fb",
+    "D9567B": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+    "7PY8V9": "873ab3c1-fbd1-4f7c-a9aa-2a22fe4dc53a",
+    "U7U7GU": "f335a9c2-3ff6-45f0-8b9d-b1d432b05bdd",
+    "843WAJ": "7622e55a-2e61-427c-916e-acf3a8125c56",
+    "6UCAWA": "5e63c5cf-60ba-4f2d-bdca-64b0ef9e853f"
+  },
+  "rooms": {
+    "room_f397c08c-b02e-4bd4-8ad2-bc5a88960a77": {
+      "id": "room_f397c08c-b02e-4bd4-8ad2-bc5a88960a77",
+      "memberIds": [
+        "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+        "ea2617b5-f134-4665-ba2f-85f8722cd9fb"
+      ],
+      "messages": [
+        {
+          "id": "1c3e93c8-6bc7-480d-917a-85b7cb2c8947",
+          "senderId": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+          "senderName": "ts",
+          "text": "KK",
+          "createdAt": "2026-09-01T07:41:23.164Z"
+        },
+        {
+          "id": "a246fe1e-f1a1-484a-9402-79b96f86111d",
+          "senderId": "ea2617b5-f134-4665-ba2f-85f8722cd9fb",
+          "senderName": "shan",
+          "text": "555",
+          "createdAt": "2026-09-01T07:41:31.514Z"
+        },
+        {
+          "id": "f8146f62-2d65-4de2-aa2b-c77ec7e2a554",
+          "senderId": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+          "senderName": "ts",
+          "text": "..",
+          "createdAt": "2026-09-01T07:52:08.852Z"
+        },
+        {
+          "id": "e8f78385-bfe8-4e00-803c-551d4fc33eb3",
+          "senderId": "d9689e2d-f886-422f-8cb4-1678d0eaefe6",
+          "senderName": "ts",
+          "text": "LL'L",
+          "createdAt": "2026-09-01T07:52:57.113Z"
+        }
+      ],
+      "createdAt": "2026-09-01T07:40:45.826Z"
+    },
+    "room_d3b65cad-5bfc-4254-8e6e-1844c4bbdf30": {
+      "id": "room_d3b65cad-5bfc-4254-8e6e-1844c4bbdf30",
+      "memberIds": [
+        "7622e55a-2e61-427c-916e-acf3a8125c56",
+        "f335a9c2-3ff6-45f0-8b9d-b1d432b05bdd"
+      ],
+      "messages": [
+        {
+          "id": "d6e51c91-1179-44e8-9b0e-196f83e8c8fb",
+          "senderId": "7622e55a-2e61-427c-916e-acf3a8125c56",
+          "senderName": "ts",
+          "text": "ll",
+          "imageDataUrl": null,
+          "createdAt": "2026-09-01T08:42:45.747Z"
+        },
+        {
+          "id": "67c9895d-2d53-4fee-a292-c78bf0c6491d",
+          "senderId": "7622e55a-2e61-427c-916e-acf3a8125c56",
+          "senderName": "ts",
+          "text": "yiyvkj",
+          "imageDataUrl": null,
+          "createdAt": "2026-09-01T08:42:53.350Z"
+        }
+      ],
+      "createdAt": "2026-09-01T08:41:31.465Z"
+    }
+  }
+}

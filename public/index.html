@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Our Space">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+      });
+    }
+  </script>
+  <title>Our Space</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section id="auth-screen" class="screen auth-screen welcome-screen">
+      <div class="welcome-content">
+        <p class="welcome-brand">OUR@SPACE</p>
+        <h1>A room for two.</h1>
+        <p class="welcome-intro">Start with your name, then invite one person into a private space that stays yours.</p>
+        <form id="auth-form" class="stack-form welcome-form">
+          <label for="name">Your name</label>
+          <input id="name" maxlength="60" autocomplete="name" required placeholder="e.g. Alex">
+          <button type="submit">Enter your space</button>
+        </form>
+        <p id="auth-error" class="error" role="alert"></p>
+      </div>
+      <p class="welcome-footer">Secure, private, and encrypted end-to-end.</p>
+      <span class="welcome-spark" aria-hidden="true">✦</span>
+    </section>
+
+    <section id="pairing-screen" class="screen pairing-screen hidden">
+      <header class="topbar">
+        <span class="brand">OUR SPACE</span>
+        <button id="sign-out" class="text-button">Sign out</button>
+      </header>
+
+      <div class="pairing-grid">
+        <div>
+          <p class="eyebrow">YOUR INVITATION</p>
+          <h1>Make it just you two.</h1>
+          <p class="intro">Share this code with your partner. It never changes.</p>
+          <div id="own-code" class="code-display">------</div>
+          <p class="muted">Your personal Pair Code</p>
+        </div>
+
+        <div class="qr-panel glass-panel">
+          <img id="qr-code" alt="Your Pair Code QR code">
+          <p>Scan to share your code</p>
+        </div>
+      </div>
+
+      <form id="pair-form" class="pair-form glass-panel">
+        <label for="partner-code">Have their Pair Code?</label>
+        <div class="input-row">
+          <input id="partner-code" maxlength="6" pattern="[A-Za-z0-9]{6}" required placeholder="ABC123">
+          <button type="submit">Pair us</button>
+        </div>
+      </form>
+      <p id="pair-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="chat-screen" class="screen chat-screen hidden">
+      <header class="topbar chat-topbar">
+        <div class="brand-block">
+          <span class="brand">OUR SPACE</span>
+          <span class="private-label">PRIVATE ROOM</span>
+        </div>
+        <button id="chat-sign-out" class="text-button">Sign out</button>
+      </header>
+
+      <div class="chat-panel glass-panel">
+        <div class="chat-heading">
+          <div>
+            <p class="eyebrow">JUST YOU TWO</p>
+            <h1 id="partner-name">Our space</h1>
+          </div>
+          <div id="partner-status" class="status-pill" aria-live="polite">
+            <span class="status-dot"></span>
+            Online
+          </div>
+        </div>
+
+        <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
+          <span>Partner is typing</span>
+          <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <form id="message-form" class="message-form">
+          <div class="composer-toolbar">
+            <div class="attachment-menu-wrap">
+              <button type="button" id="composer-menu-toggle" class="composer-toggle" aria-label="More attachment options" aria-expanded="false">+</button>
+              <div id="attachment-menu" class="attachment-menu hidden" role="menu" aria-label="Attachment options">
+                <button type="button" class="action-item" data-action="camera">Camera</button>
+                <button type="button" class="action-item" data-action="photos">Photos &amp; Files</button>
+                <button type="button" class="action-item" data-action="audio">Audio</button>
+                <button type="button" class="action-item" data-action="contact">Contact</button>
+              </div>
+            </div>
+
+            <textarea id="message-input" rows="1" maxlength="4000" autocomplete="off" placeholder="Write something..." aria-label="Message"></textarea>
+
+            <button type="submit" class="send-button" aria-label="Send message">➤</button>
+          </div>
+
+          <input id="image-upload" type="file" accept="image/*" hidden>
+          <div id="image-preview" class="image-preview hidden" aria-live="polite"></div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
