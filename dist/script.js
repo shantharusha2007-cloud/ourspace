@@ -1,0 +1,17 @@
+const state = { user: null, socket: null };
+const screens = { auth: document.querySelector('#auth-screen'), pairing: document.querySelector('#pairing-screen'), chat: document.querySelector('#chat-screen') };
+const $ = (selector) => document.querySelector(selector);
+function show(screen) { Object.values(screens).forEach((element) => element.classList.add('hidden')); screens[screen].classList.remove('hidden'); }
+function setError(selector, message) { $(selector).textContent = message || ''; }
+function saveUser(user) { state.user = user; localStorage.setItem('our-space-user-id', user.id); render(); connect(); }
+function render() { if (!state.user) return show('auth'); if (!state.user.roomId) { show('pairing'); $('#own-code').textContent = state.user.pairCode; $('#qr-code').src = `/api/qr/${state.user.pairCode}`; return; } show('chat'); $('#partner-name').textContent = state.user.partnerName || 'Our space'; loadMessages(); }
+async function request(url, options) { const response = await fetch(url, options); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Something went wrong.'); return data; }
+async function loadUser() { const userId = localStorage.getItem('our-space-user-id'); if (!userId) return render(); try { state.user = (await request(`/api/users/${userId}`)).user; render(); connect(); } catch { localStorage.removeItem('our-space-user-id'); render(); } }
+function connect() { if (state.socket) state.socket.disconnect(); state.socket = io({ auth: { userId: state.user.id } }); state.socket.on('paired', ({ user }) => { state.user = user; render(); }); state.socket.on('message:new', addMessage); }
+async function loadMessages() { const data = await request(`/api/rooms/${state.user.roomId}/messages?userId=${encodeURIComponent(state.user.id)}`); $('#messages').replaceChildren(); data.messages.forEach(addMessage); }
+function addMessage(message) { const element = document.createElement('article'); element.className = `message${message.senderId === state.user.id ? ' mine' : ''}`; element.textContent = message.text; const meta = document.createElement('small'); meta.textContent = `${message.senderName} | ${new Date(message.createdAt).toLocaleString()}`; element.append(meta); $('#messages').append(element); $('#messages').scrollTop = $('#messages').scrollHeight; }
+$('#auth-form').addEventListener('submit', async (event) => { event.preventDefault(); setError('#auth-error'); try { saveUser((await request('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('#name').value }) })).user); } catch (error) { setError('#auth-error', error.message); } });
+$('#pair-form').addEventListener('submit', async (event) => { event.preventDefault(); setError('#pair-error'); try { saveUser((await request('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: state.user.id, pairCode: $('#partner-code').value }) })).user); } catch (error) { setError('#pair-error', error.message); } });
+$('#message-form').addEventListener('submit', (event) => { event.preventDefault(); const input = $('#message-input'); if (!input.value.trim()) return; state.socket.emit('message:send', { text: input.value }); input.value = ''; });
+['#sign-out', '#chat-sign-out'].forEach((selector) => $(selector).addEventListener('click', () => { if (state.socket) state.socket.disconnect(); localStorage.removeItem('our-space-user-id'); state.user = null; render(); }));
+loadUser();

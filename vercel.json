@@ -8,6 +8,13 @@
   ],
   "routes": [
     {
+      "src": "/.well-known/assetlinks.json",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "dest": "/api/index.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "api/index.js"
     }
