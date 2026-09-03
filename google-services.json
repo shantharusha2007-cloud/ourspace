@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "595386365098",
+    "project_id": "ourspace-app-127f5",
+    "storage_bucket": "ourspace-app-127f5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:595386365098:android:316dcddbd8641f153e0cd3",
+        "android_client_info": {
+          "package_name": "com.shantharu.ourspace"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "595386365098-sb4qhhc352igcothq0s5fmppjss596ed.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shantharu.ourspace",
+            "certificate_hash": "0cb362d93c6803017b91627121e551c579a1c45d"
+          }
+        },
+        {
+          "client_id": "595386365098-qc1iooesd3p2f1vh40m6t51na83keoqs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwk6HVRAUs3qiS771epJ-IVeVJea6bHiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "595386365098-qc1iooesd3p2f1vh40m6t51na83keoqs.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

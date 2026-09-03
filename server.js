@@ -1,13 +1,18 @@
 const express = require('express');
+require('dotenv').config();
 const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
+const { OAuth2Client } = require('google-auth-library');
 
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
+const SESSION_SECRET = process.env.SESSION_SECRET || 'our-space-development-session-secret';
+const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || 'your_google_web_client_id_here.apps.googleusercontent.com';
+const googleClient = new OAuth2Client();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -23,8 +28,13 @@ const messageSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema({
   _id: { type: String, required: true },
-  name: { type: String, required: true, maxlength: 60 },
+  email: { type: String, required: true, unique: true, sparse: true, lowercase: true, trim: true },
+  name: { type: String, default: '', maxlength: 60 },
+  profilePicture: { type: String, default: null },
+  gender: { type: String, default: null },
+  bio: { type: String, default: '', maxlength: 500 },
   pairCode: { type: String, required: true, unique: true, uppercase: true },
+  pairedWith: { type: String, default: null },
   partnerId: { type: String, default: null },
   roomId: { type: String, default: null },
   createdDate: { type: Date, default: Date.now },
@@ -56,13 +66,68 @@ async function createPairCode() {
 }
 
 async function userView(user) {
-  const partner = user.partnerId ? await User.findById(user.partnerId).select('name').lean() : null;
-  return { id: user._id, name: user.name, pairCode: user.pairCode, qrPayload: `our-space://pair/${user.pairCode}`, roomId: user.roomId, partnerName: partner ? partner.name : null };
+  const partner = user.partnerId ? await User.findById(user.partnerId).select('email name profilePicture gender bio').lean() : null;
+  return { id: user._id, email: user.email, name: user.name, profilePicture: user.profilePicture, gender: user.gender, bio: user.bio, pairCode: user.pairCode, qrPayload: `our-space://pair/${user.pairCode}`, roomId: user.roomId, pairedWith: user.pairedWith, partner: partner || null, partnerName: partner ? partner.name : null };
 }
 
 function getUser(userId) { return User.findById(userId); }
 
+function createSession(user) {
+  const payload = Buffer.from(JSON.stringify({ id: user._id, email: user.email })).toString('base64url');
+  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function sessionUser(token) {
+  if (!token) return null;
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try { return JSON.parse(Buffer.from(payload, 'base64url').toString()); } catch { return null; }
+}
+
+async function authenticatedUser(req) {
+  const session = sessionUser((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  return session ? User.findById(session.id) : null;
+}
+
 app.use(express.json({ limit: '20mb' }));
+
+app.post('/api/auth/google', async (req, res, next) => {
+  try {
+    await connectDatabase();
+    const idToken = typeof req.body.idToken === 'string' ? req.body.idToken : '';
+    if (!idToken) return res.status(400).json({ error: 'Google identity token is required.' });
+    const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_WEB_CLIENT_ID });
+    const googleUser = ticket.getPayload();
+    if (!googleUser?.email || googleUser.email_verified === false) return res.status(401).json({ error: 'That Google account could not be verified.' });
+    const email = googleUser.email.toLowerCase();
+    let user = await User.findOne({ email });
+    const isNew = !user;
+    if (!user) user = await User.create({ _id: crypto.randomUUID(), email, name: googleUser.name || '', profilePicture: googleUser.picture || null, pairCode: await createPairCode() });
+    else if (!user.profilePicture && googleUser.picture) { user.profilePicture = googleUser.picture; await user.save(); }
+    res.json({ token: createSession(user), isNew, user: await userView(user) });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/users/profile', async (req, res, next) => {
+  try {
+    await connectDatabase();
+    const user = await authenticatedUser(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.' });
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const gender = typeof req.body.gender === 'string' ? req.body.gender.trim() : '';
+    const bio = typeof req.body.bio === 'string' ? req.body.bio.trim() : '';
+    if (!name || name.length > 60) return res.status(400).json({ error: 'Enter a name between 1 and 60 characters.' });
+    if (bio.length > 500) return res.status(400).json({ error: 'Bio must be 500 characters or fewer.' });
+    user.name = name; user.gender = gender || null; user.bio = bio;
+    if (typeof req.body.profilePicture === 'string') user.profilePicture = req.body.profilePicture.trim() || null;
+    await user.save();
+    res.json({ user: await userView(user) });
+  } catch (error) { next(error); }
+});
+
 app.get('/manifest.json', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
@@ -96,7 +161,7 @@ app.post('/api/auth', async (req, res, next) => {
     if (existingUser) return res.json({ user: await userView(existingUser) });
   }
   if (!name || name.length > 60) return res.status(400).json({ error: 'Enter a name between 1 and 60 characters.' });
-  const user = await User.create({ _id: crypto.randomUUID(), name, pairCode: await createPairCode() });
+  const user = await User.create({ _id: crypto.randomUUID(), email: `legacy-${crypto.randomUUID()}@local.invalid`, name, pairCode: await createPairCode() });
   res.json({ user: await userView(user) });
   } catch (error) { next(error); }
 });
@@ -113,19 +178,33 @@ app.get('/api/users/:userId', async (req, res, next) => {
 app.post('/api/pair', async (req, res, next) => {
   try {
   await connectDatabase();
-  const user = await User.findById(req.body.userId);
+  const user = await authenticatedUser(req) || await User.findById(req.body.userId);
   const code = typeof req.body.pairCode === 'string' ? req.body.pairCode.trim().toUpperCase() : '';
-  const partner = await User.findOne({ pairCode: code });
+  const partner = await User.findOne({ $or: [{ pairCode: code }, { email: code.toLowerCase() }] });
   if (!user || !partner) return res.status(400).json({ error: 'That Pair Code is not valid.' });
   if (user.id === partner.id) return res.status(400).json({ error: 'You cannot pair with yourself.' });
   if (user.roomId || partner.roomId) return res.status(409).json({ error: 'One of these users is already permanently paired.' });
-  const roomId = `room_${crypto.randomUUID()}`;
-  await Room.create({ _id: roomId, memberIds: [user.id, partner.id] });
-  user.partnerId = partner.id; user.roomId = roomId;
-  partner.partnerId = user.id; partner.roomId = roomId;
+  const previousRoom = await Room.findOne({ memberIds: { $all: [user.id, partner.id] } });
+  const roomId = previousRoom?._id || `room_${crypto.randomUUID()}`;
+  if (!previousRoom) await Room.create({ _id: roomId, memberIds: [user.id, partner.id] });
+  user.partnerId = partner.id; user.pairedWith = partner.email; user.roomId = roomId;
+  partner.partnerId = user.id; partner.pairedWith = user.email; partner.roomId = roomId;
   await Promise.all([user.save(), partner.save()]);
   io.to(`user:${partner.id}`).emit('paired', { user: await userView(partner) });
   res.json({ user: await userView(user) });
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/pair', async (req, res, next) => {
+  try {
+    await connectDatabase();
+    const user = await authenticatedUser(req) || await User.findById(req.body.userId);
+    if (!user) return res.status(401).json({ error: 'Authentication required.' });
+    const partner = user.partnerId ? await User.findById(user.partnerId) : null;
+    user.partnerId = null; user.pairedWith = null; user.roomId = null;
+    await user.save();
+    if (partner) { partner.partnerId = null; partner.pairedWith = null; partner.roomId = null; await partner.save(); io.to(`user:${partner.id}`).emit('unpaired'); }
+    res.json({ user: await userView(user) });
   } catch (error) { next(error); }
 });
 
@@ -145,7 +224,8 @@ app.use('/api', (error, req, res, next) => {
 
 io.use((socket, next) => {
   const userId = socket.handshake.auth && socket.handshake.auth.userId;
-  connectDatabase().then(() => getUser(userId)).then((user) => {
+  const session = sessionUser(socket.handshake.auth && socket.handshake.auth.token);
+  connectDatabase().then(() => (session?.id === userId ? getUser(userId) : null)).then((user) => {
     if (!user) return next(new Error('Authentication required.'));
     socket.userId = userId; next();
   }).catch(next);

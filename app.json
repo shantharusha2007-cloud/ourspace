@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "scheme": "ourspace",
+    "plugins": [
+      "expo-secure-store",
+      "@react-native-google-signin/google-signin"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c4b29648-612d-4310-ba71-a5368b9cbde0"
+      }
+    },
+    "android": {
+      "package": "com.shantharu.ourspace",
+      "googleServicesFile": "./google-services.json"
+    }
+  }
+}

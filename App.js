@@ -15,6 +15,8 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +24,14 @@ import { io } from 'socket.io-client';
 
 const API_URL = 'https://ourspace-app-gules.vercel.app';
 const USER_STORAGE_KEY = 'our-space-user-id';
+const SESSION_STORAGE_KEY = 'our-space-session';
 const REACTIONS = ['❤️', '😂', '👍', '😮'];
+const GOOGLE_WEB_CLIENT_ID = '595386365098-qc1iooesd3p2f1vh40m6t51na83keoqs.apps.googleusercontent.com';
+
+GoogleSignin.configure({
+  webClientId: GOOGLE_WEB_CLIENT_ID,
+  offlineAccess: true,
+});
 
 function formatTimestamp(value) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -43,47 +52,81 @@ function PrimaryButton({ children, onPress, disabled }) {
   );
 }
 
-function Header({ onSignOut, privateRoom = false }) {
+function Header({ onSignOut, onUnpair, privateRoom = false }) {
   return (
     <View style={styles.header}>
       <View>
         <Text style={styles.brand}>OUR SPACE</Text>
         {privateRoom && <Text style={styles.privateLabel}>PRIVATE ROOM</Text>}
       </View>
-      <TouchableOpacity onPress={onSignOut} hitSlop={12}>
-        <Text style={styles.signOut}>Sign out</Text>
-      </TouchableOpacity>
+      <View style={styles.headerActions}>
+        {onUnpair && <TouchableOpacity onPress={onUnpair} hitSlop={12}><Text style={styles.unpair}>Unpair</Text></TouchableOpacity>}
+        <TouchableOpacity onPress={onSignOut} hitSlop={12}><Text style={styles.signOut}>Sign out</Text></TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-function NameScreen({ onSubmit, loading }) {
-  const [name, setName] = useState('');
+function WelcomeScreen({ onSignIn, loading }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.welcomeScreen} keyboardShouldPersistTaps="handled">
         <Text style={styles.welcomeBrand}>OUR@SPACE</Text>
         <Text style={styles.welcomeTitle}>A room for two.</Text>
-        <Text style={styles.welcomeIntro}>Start with your name, then invite one person into a private space that stays yours.</Text>
-        <View style={styles.form}>
-          <Text style={styles.label}>Your name</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            maxLength={60}
-            autoCapitalize="words"
-            autoComplete="name"
-            placeholder="e.g. Alex"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            returnKeyType="done"
-          />
-          <PrimaryButton onPress={() => onSubmit(name)} disabled={loading}>{loading ? 'Entering...' : 'Enter your space'}</PrimaryButton>
-        </View>
-        <Text style={styles.welcomeFooter}>Secure, private, and encrypted end-to-end.</Text>
+        <Text style={styles.welcomeIntro}>This is your end-to-end encrypted private space.</Text>
+        <View style={styles.form}><PrimaryButton onPress={onSignIn} disabled={loading}>{loading ? 'Signing in...' : 'Sign in with Google'}</PrimaryButton></View>
+        <Text style={styles.welcomeFooter}>Your identity and room stay yours across devices.</Text>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function ProfileOnboarding({ initialUser, onSubmit, loading }) {
+  const [name, setName] = useState(initialUser.name || '');
+  const [profilePicture, setProfilePicture] = useState(initialUser.profilePicture || '');
+  const [gender, setGender] = useState(initialUser.gender || '');
+  const [bio, setBio] = useState(initialUser.bio || '');
+  const editPicture = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (!result.canceled && result.assets?.[0]?.uri) setProfilePicture(result.assets[0].uri);
+  };
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.welcomeScreen} keyboardShouldPersistTaps="handled">
+        <Text style={styles.welcomeBrand}>YOUR PROFILE</Text>
+        <Text style={styles.screenTitle}>Make it yours.</Text>
+        <TouchableOpacity style={styles.profilePreviewWrap} onPress={editPicture}>
+          {profilePicture ? <Image source={{ uri: profilePicture }} style={styles.profilePreview} /> : <Text style={styles.profilePlaceholder}>Add photo</Text>}
+        </TouchableOpacity>
+        <View style={styles.form}>
+          <Text style={styles.label}>Display name</Text>
+          <TextInput value={name} onChangeText={setName} maxLength={60} placeholder="Your name" placeholderTextColor={COLORS.muted} style={styles.input} />
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.genderRow}>{['Woman', 'Man', 'Non-binary', 'Prefer not to say'].map((option) => <TouchableOpacity key={option} style={[styles.genderOption, gender === option && styles.genderSelected]} onPress={() => setGender(option)}><Text style={styles.genderText}>{option}</Text></TouchableOpacity>)}</View>
+          <Text style={styles.label}>Bio (optional)</Text>
+          <TextInput value={bio} onChangeText={setBio} maxLength={500} multiline placeholder="A little about you" placeholderTextColor={COLORS.muted} style={[styles.input, styles.bioInput]} />
+          <PrimaryButton onPress={() => onSubmit({ name, profilePicture, gender, bio })} disabled={loading}>{loading ? 'Saving...' : 'Continue'}</PrimaryButton>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function AuthScreen({ onAuthenticated, loading }) {
+  const handleGoogleSignIn = async () => {
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken || userInfo.idToken;
+      if (!idToken) throw new Error('Google did not return an identity token.');
+      await onAuthenticated(idToken);
+    } catch (error) {
+      if (error.code === 'SIGN_IN_CANCELLED' || error.code === '12501') return;
+      console.error('Google Sign-In Error:', error);
+      Alert.alert('Google sign-in failed', error.message || 'Please try again.');
+    }
+  };
+  return <WelcomeScreen onSignIn={handleGoogleSignIn} loading={loading} />;
 }
 
 function PairingScreen({ user, onPair, onPairSuccess, onSignOut, loading }) {
@@ -205,10 +248,11 @@ function PairingScreen({ user, onPair, onPairSuccess, onSignOut, loading }) {
           <Text style={styles.label}>Have their Pair Code?</Text>
           <TextInput
             value={partnerCode}
-            onChangeText={(value) => setPartnerCode(value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-            maxLength={6}
-            autoCapitalize="characters"
-            placeholder="ABC123"
+            onChangeText={setPartnerCode}
+            maxLength={254}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="Pair Code or Gmail address"
             placeholderTextColor={COLORS.muted}
             style={styles.input}
           />
@@ -243,7 +287,7 @@ function MessageBubble({ message, isMine, onReaction, reactions }) {
   );
 }
 
-function ChatScreen({ user, socket, onSignOut }) {
+function ChatScreen({ user, socket, onSignOut, onUnpair }) {
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [pendingImage, setPendingImage] = useState('');
@@ -313,7 +357,7 @@ function ChatScreen({ user, socket, onSignOut }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header onSignOut={onSignOut} privateRoom />
+      <Header onSignOut={onSignOut} onUnpair={onUnpair} privateRoom />
       <View style={styles.chatScreen}>
         <View style={styles.chatHeading}>
           <View><Text style={styles.eyebrow}>JUST YOU TWO</Text><Text style={styles.partnerName}>{user.partnerName || 'Our space'}</Text></View>
@@ -344,6 +388,8 @@ function ChatScreen({ user, socket, onSignOut }) {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [onboardingUser, setOnboardingUser] = useState(null);
+  const [sessionToken, setSessionToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [socket, setSocket] = useState(null);
@@ -356,15 +402,19 @@ export default function App() {
   }, [user?.id]);
 
   useEffect(() => {
-    AsyncStorage.getItem(USER_STORAGE_KEY).then(async (userId) => {
-      if (!userId) return;
-      try { setUser((await request(`/api/users/${userId}`)).user); } catch { await AsyncStorage.removeItem(USER_STORAGE_KEY); }
+    SecureStore.getItemAsync(SESSION_STORAGE_KEY).then(async (storedSession) => {
+      if (!storedSession) return;
+      try {
+        const session = JSON.parse(storedSession);
+        const restored = (await request(`/api/users/${session.userId}`, { headers: { Authorization: `Bearer ${session.token}` } })).user;
+        setSessionToken(session.token); setUser(restored);
+      } catch { await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY); await AsyncStorage.removeItem(USER_STORAGE_KEY); }
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!user) return undefined;
-    const nextSocket = io(API_URL, { auth: { userId: user.id }, transports: ['websocket', 'polling'] });
+    const nextSocket = io(API_URL, { auth: { userId: user.id, token: sessionToken }, transports: ['websocket', 'polling'] });
     socketRef.current = nextSocket;
     setSocket(nextSocket);
     const handlePaired = (data) => {
@@ -373,30 +423,47 @@ export default function App() {
       if (pairedUser?.id === user.id && roomId) onPairSuccess({ ...pairedUser, roomId });
     };
     nextSocket.on('paired', handlePaired);
+    nextSocket.on('unpaired', () => setUser((current) => current ? { ...current, partnerId: null, pairedWith: null, roomId: null, partner: null, partnerName: null } : current));
     return () => {
       nextSocket.disconnect();
       if (socketRef.current === nextSocket) socketRef.current = null;
       setSocket((current) => current === nextSocket ? null : current);
     };
-  }, [user?.id, user?.roomId]);
+  }, [user?.id, user?.roomId, sessionToken]);
 
-  const saveUser = async (nextUser) => { await AsyncStorage.setItem(USER_STORAGE_KEY, nextUser.id); setUser(nextUser); };
-  const enterSpace = async (name) => {
-    if (!name.trim()) return Alert.alert('Name required', 'Enter a name between 1 and 60 characters.');
+  const saveUser = async (nextUser, token = sessionToken) => { await AsyncStorage.setItem(USER_STORAGE_KEY, nextUser.id); if (token) { await SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify({ token, userId: nextUser.id })); setSessionToken(token); } setUser(nextUser); setOnboardingUser(null); };
+  const authenticateWithGoogle = async (idToken) => {
     setActionLoading(true);
-    try { await saveUser((await request('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })).user); } catch (error) { Alert.alert('Could not enter', error.message); } finally { setActionLoading(false); }
+    try {
+      const result = await request('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
+      await SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify({ token: result.token, userId: result.user.id }));
+      setSessionToken(result.token);
+      if (result.isNew || !result.user.name) setOnboardingUser(result.user); else setUser(result.user);
+    } catch (error) { Alert.alert('Could not sign in', error.message); } finally { setActionLoading(false); }
+  };
+  const saveProfile = async (profile) => {
+    setActionLoading(true);
+    try {
+      const result = await request('/api/users/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify(profile) });
+      await saveUser(result.user);
+    } catch (error) { Alert.alert('Could not save profile', error.message); } finally { setActionLoading(false); }
   };
   const pairUsers = async (pairCode) => {
-    if (pairCode.length !== 6) { Alert.alert('Pair Code required', 'Enter the six-character Pair Code.'); return false; }
+    if (!pairCode.trim()) { Alert.alert('Pair Code required', 'Enter a Pair Code or partner email.'); return false; }
     setActionLoading(true);
-    try { await saveUser((await request('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, pairCode }) })).user); return true; } catch (error) { Alert.alert('Could not pair', error.message); return false; } finally { setActionLoading(false); }
+    try { await saveUser((await request('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ userId: user.id, pairCode }) })).user); return true; } catch (error) { Alert.alert('Could not pair', error.message); return false; } finally { setActionLoading(false); }
   };
-  const signOut = async () => { socketRef.current?.disconnect(); await AsyncStorage.removeItem(USER_STORAGE_KEY); setUser(null); };
+  const unpair = () => Alert.alert('Unpair this space?', 'Your profiles stay saved, and this room history remains stored.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Unpair', style: 'destructive', onPress: async () => {
+    setActionLoading(true);
+    try { await saveUser((await request('/api/pair', { method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ userId: user.id }) })).user); } catch (error) { Alert.alert('Could not unpair', error.message); } finally { setActionLoading(false); }
+  } }]);
+  const signOut = async () => { socketRef.current?.disconnect(); await AsyncStorage.removeItem(USER_STORAGE_KEY); await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY); setSessionToken(null); setOnboardingUser(null); setUser(null); };
 
   if (loading) return <SafeAreaView style={styles.loading}><ActivityIndicator size="large" color={COLORS.accent} /></SafeAreaView>;
-  if (!user) return <NameScreen onSubmit={enterSpace} loading={actionLoading} />;
+  if (!user && onboardingUser) return <ProfileOnboarding initialUser={onboardingUser} onSubmit={saveProfile} loading={actionLoading} />;
+  if (!user) return <AuthScreen onAuthenticated={authenticateWithGoogle} loading={actionLoading} />;
   if (!user.roomId) return <PairingScreen user={user} onPair={pairUsers} onPairSuccess={handlePairSuccess} onSignOut={signOut} loading={actionLoading} />;
-  return socket ? <ChatScreen user={user} socket={socket} onSignOut={signOut} /> : <SafeAreaView style={styles.loading}><ActivityIndicator color={COLORS.accent} /></SafeAreaView>;
+  return socket ? <ChatScreen user={user} socket={socket} onSignOut={signOut} onUnpair={unpair} /> : <SafeAreaView style={styles.loading}><ActivityIndicator color={COLORS.accent} /></SafeAreaView>;
 }
 
 const COLORS = { background: '#07111f', panel: '#101d2d', panelLight: '#17283b', text: '#f5f7fb', muted: '#8fa1b5', accent: '#63d6b2', accentDark: '#08111f', border: '#25384d', mine: '#245f55', theirs: '#17283b', danger: '#ff8d8d' };
@@ -413,8 +480,11 @@ const styles = StyleSheet.create({
   primaryButton: { alignItems: 'center', backgroundColor: COLORS.accent, borderRadius: 12, minHeight: 52, justifyContent: 'center', marginTop: 8, paddingHorizontal: 18 },
   disabledButton: { opacity: 0.65 }, primaryButtonText: { color: COLORS.accentDark, fontSize: 16, fontWeight: '800' },
   welcomeFooter: { color: COLORS.muted, fontSize: 12, marginTop: 48, textAlign: 'center' },
-  header: { alignItems: 'center', borderBottomColor: COLORS.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
-  brand: { color: COLORS.text, fontSize: 14, fontWeight: '800', letterSpacing: 1.5 }, privateLabel: { color: COLORS.muted, fontSize: 10, letterSpacing: 1.2, marginTop: 4 }, signOut: { color: COLORS.accent, fontSize: 14, fontWeight: '700' },
+  profilePreviewWrap: { alignItems: 'center', alignSelf: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 60, borderWidth: 1, height: 120, justifyContent: 'center', marginBottom: 24, overflow: 'hidden', width: 120 },
+  profilePreview: { height: 120, width: 120 }, profilePlaceholder: { color: COLORS.accent, fontSize: 13, fontWeight: '700' },
+  genderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, genderOption: { borderColor: COLORS.border, borderRadius: 10, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 10 }, genderSelected: { backgroundColor: COLORS.accent, borderColor: COLORS.accent }, genderText: { color: COLORS.text, fontSize: 13 }, bioInput: { minHeight: 90, textAlignVertical: 'top' },
+  header: { alignItems: 'center', borderBottomColor: COLORS.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }, headerActions: { alignItems: 'center', flexDirection: 'row', gap: 16 },
+  brand: { color: COLORS.text, fontSize: 14, fontWeight: '800', letterSpacing: 1.5 }, privateLabel: { color: COLORS.muted, fontSize: 10, letterSpacing: 1.2, marginTop: 4 }, signOut: { color: COLORS.accent, fontSize: 14, fontWeight: '700' }, unpair: { color: COLORS.danger, fontSize: 14, fontWeight: '700' },
   pairingScreen: { flex: 1, padding: 24 }, pairingContent: { paddingBottom: 10 }, tabs: { backgroundColor: COLORS.panel, borderRadius: 12, flexDirection: 'row', marginBottom: 22, padding: 4 }, tab: { alignItems: 'center', borderRadius: 9, flex: 1, paddingVertical: 12 }, activeTab: { backgroundColor: COLORS.accent }, tabText: { color: COLORS.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1 }, activeTabText: { color: COLORS.accentDark }, eyebrow: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 }, screenTitle: { color: COLORS.text, fontSize: 32, fontWeight: '800', marginBottom: 10 }, intro: { color: COLORS.muted, fontSize: 16, lineHeight: 24 },
   codeBlock: { alignItems: 'center', marginVertical: 28 }, code: { color: COLORS.text, fontSize: 36, fontWeight: '800', letterSpacing: 7 }, muted: { color: COLORS.muted, fontSize: 13, marginTop: 8 }, qrPanel: { alignItems: 'center', backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 16, borderWidth: 1, padding: 20 }, qrCode: { backgroundColor: '#fff', height: 200, width: 200 }, qrCaption: { color: COLORS.muted, fontSize: 13, marginTop: 14 }, pairForm: { backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 16, borderWidth: 1, gap: 10, marginTop: 18, padding: 18 }, scannerPanel: { backgroundColor: COLORS.panel, borderColor: COLORS.border, borderRadius: 16, borderWidth: 1, flex: 1, minHeight: 360, overflow: 'hidden' }, permissionPanel: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 28 }, permissionTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', textAlign: 'center' }, permissionText: { color: COLORS.muted, fontSize: 14, lineHeight: 21, marginBottom: 18, marginTop: 10, textAlign: 'center' }, cameraWrap: { flex: 1, minHeight: 360 }, camera: { flex: 1 }, scanOverlay: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 }, scanFrame: { borderColor: COLORS.accent, borderRadius: 18, borderWidth: 3, height: 230, width: 230 }, scanHint: { backgroundColor: 'rgba(7, 17, 31, 0.8)', borderRadius: 8, color: COLORS.text, fontSize: 13, marginTop: 24, paddingHorizontal: 12, paddingVertical: 8 },
   chatScreen: { flex: 1, paddingHorizontal: 14 }, chatHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 6, paddingVertical: 18 }, partnerName: { color: COLORS.text, fontSize: 24, fontWeight: '800' }, status: { alignItems: 'center', backgroundColor: COLORS.panel, borderRadius: 20, flexDirection: 'row', paddingHorizontal: 11, paddingVertical: 8 }, statusDot: { backgroundColor: COLORS.accent, borderRadius: 5, height: 9, marginRight: 7, width: 9 }, awayDot: { backgroundColor: COLORS.muted }, statusText: { color: COLORS.muted, fontSize: 12, fontWeight: '700' }, typing: { color: COLORS.accent, fontSize: 12, paddingHorizontal: 6, paddingBottom: 8 }, messages: { gap: 12, paddingBottom: 12, paddingHorizontal: 2 },
