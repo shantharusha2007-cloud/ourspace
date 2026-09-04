@@ -3,12 +3,14 @@ const state = {
   socket: null,
   partnerTyping: false,
   partnerOnline: true,
+  partnerLastSeen: null,
   messageReactions: {},
   typingTimer: null,
   pendingImageDataUrl: '',
+  enteredSpace: false,
 };
 
-const screens = { auth: document.querySelector('#auth-screen'), pairing: document.querySelector('#pairing-screen'), chat: document.querySelector('#chat-screen') };
+const screens = { auth: document.querySelector('#auth-screen'), pairing: document.querySelector('#pairing-screen'), entry: document.querySelector('#entry-screen'), chat: document.querySelector('#chat-screen') };
 const $ = (selector) => document.querySelector(selector);
 const REACTIONS = ['❤️', '😂', '👍', '😮'];
 
@@ -71,6 +73,14 @@ function renderTypingIndicator() {
 }
 
 function updateStatusPill() {
+
+  function renderPresence() {
+    const presence = $('#chat-presence');
+    if (!presence) return;
+    if (state.partnerTyping) presence.textContent = 'typing...';
+    else if (state.partnerOnline) presence.textContent = 'Online';
+    else presence.textContent = `Last seen ${state.partnerLastSeen ? formatTimestamp(state.partnerLastSeen) : 'recently'}`;
+  }
   const pill = $('#partner-status');
   if (!pill) return;
   pill.classList.toggle('away', !state.partnerOnline);
@@ -119,12 +129,31 @@ function render() {
     return;
   }
 
+  const partner = state.user.partner || {};
+  const partnerName = localStorage.getItem(`our-space-partner-name:${state.user.id}`) || state.user.partnerName || partner.name || 'Your partner';
+  $('#entry-name').textContent = partnerName;
+  document.documentElement.style.setProperty('--entry-aura', localStorage.getItem(`our-space-background:${state.user.id}`) || '#24103f');
+  $('#entry-portal').setAttribute('aria-label', `Enter your space with ${partnerName}`);
+  const avatar = $('#entry-avatar');
+  avatar.src = partner.profilePicture || '';
+  avatar.alt = `${partnerName}'s profile picture`;
+  avatar.classList.toggle('avatar-fallback', !partner.profilePicture);
+  avatar.dataset.initial = partnerName.charAt(0).toUpperCase();
+  avatar.parentElement.dataset.initial = avatar.dataset.initial;
+  if (!state.enteredSpace) return show('entry');
+
   show('chat');
-  $('#partner-name').textContent = state.user.partnerName || 'Our space';
+  $('#partner-name').textContent = partnerName;
   setPartnerOnline(true);
+  renderPresence();
   renderTypingIndicator();
   loadMessages();
 }
+
+$('#entry-portal').addEventListener('click', () => {
+  state.enteredSpace = true;
+  render();
+});
 
 function syncMessageReactions(messageId, element) {
   const container = element && element.querySelector('.message-reactions');
@@ -184,11 +213,18 @@ function connect() {
     render();
   });
 
+  state.socket.on('unpaired', () => {
+    state.user = { ...state.user, partnerId: null, pairedWith: null, roomId: null, partner: null, partnerName: null };
+    state.enteredSpace = false;
+    render();
+  });
+
   state.socket.on('message:new', addMessage);
 
   state.socket.on('typing', ({ userId }) => {
     if (userId !== state.user.id) {
       state.partnerTyping = true;
+      renderPresence();
       renderTypingIndicator();
     }
   });
@@ -196,6 +232,7 @@ function connect() {
   state.socket.on('stop_typing', ({ userId }) => {
     if (userId !== state.user.id) {
       state.partnerTyping = false;
+      renderPresence();
       renderTypingIndicator();
     }
   });
@@ -206,9 +243,58 @@ function connect() {
   });
 
   state.socket.on('disconnect', () => {
+    state.partnerLastSeen = Date.now();
     setPartnerOnline(false);
+    renderPresence();
+  });
+
+  state.socket.on('unpair:request', ({ userName } = {}) => {
+    const accepted = window.confirm(`${userName || 'Your partner'} requested to unpair. Accept?`);
+    state.socket.emit('unpair:respond', { accepted });
   });
 }
+
+function openSettings() {
+  const partner = state.user?.partner || {};
+  $('#settings-name').value = state.user?.name || '';
+  $('#settings-bio').value = state.user?.bio || '';
+  $('#settings-partner-name').value = state.user ? localStorage.getItem(`our-space-partner-name:${state.user.id}`) || state.user.partnerName || partner.name || '' : '';
+  $('#settings-background').value = localStorage.getItem(`our-space-background:${state.user?.id}`) || '#24103f';
+  $('#settings-picture').value = '';
+  $('#settings-modal').classList.remove('hidden');
+}
+
+['#entry-settings', '#chat-settings'].forEach((selector) => $(selector).addEventListener('click', openSettings));
+$('#settings-close').addEventListener('click', () => $('#settings-modal').classList.add('hidden'));
+$('#settings-modal').addEventListener('click', (event) => { if (event.target.id === 'settings-modal') event.currentTarget.classList.add('hidden'); });
+$('#settings-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!state.user) return;
+  const name = $('#settings-name').value.trim();
+  if (!name) return setError('#settings-error', 'Enter your name.');
+  state.user.name = name;
+  state.user.bio = $('#settings-bio').value.trim();
+  localStorage.setItem(`our-space-partner-name:${state.user.id}`, $('#settings-partner-name').value.trim());
+  localStorage.setItem(`our-space-background:${state.user.id}`, $('#settings-background').value);
+  document.documentElement.style.setProperty('--entry-aura', $('#settings-background').value);
+  setError('#settings-error');
+  $('#settings-modal').classList.add('hidden');
+  render();
+});
+$('#settings-picture').addEventListener('change', (event) => {
+  const [file] = event.target.files;
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => { state.user.profilePicture = reader.result; };
+  reader.readAsDataURL(file);
+});
+$('#settings-unpair').addEventListener('click', () => {
+  if (!state.socket) return;
+  state.socket.emit('unpair:request');
+  $('#settings-modal').classList.add('hidden');
+  window.alert('Unpair request sent. Your partner must accept it.');
+});
+$('#settings-sign-out').addEventListener('click', () => $('#chat-sign-out').click());
 
 async function loadMessages() {
   const data = await request(`/api/rooms/${state.user.roomId}/messages?userId=${encodeURIComponent(state.user.id)}`);

@@ -68,24 +68,32 @@
       <p id="pair-error" class="error" role="alert"></p>
     </section>
 
+    <section id="entry-screen" class="screen entry-screen hidden" aria-labelledby="entry-name">
+      <button id="entry-settings" class="settings-button" type="button" aria-label="Open settings">⚙</button>
+      <div class="entry-content">
+        <p class="entry-brand">OUR SPACE</p>
+        <p class="entry-eyebrow">YOUR PRIVATE ROOM</p>
+        <button id="entry-portal" class="entry-portal" type="button" aria-label="Enter your space">
+          <span class="entry-glow" aria-hidden="true"></span>
+          <span class="entry-ring entry-ring-outer" aria-hidden="true"><span class="entry-ring entry-ring-inner"><img id="entry-avatar" alt=""></span></span>
+        </button>
+        <h1 id="entry-name">Your partner</h1>
+        <p class="entry-status"><span class="status-dot"></span><span>Online</span></p>
+        <p class="entry-prompt">Tap to enter our space</p>
+      </div>
+    </section>
+
     <section id="chat-screen" class="screen chat-screen hidden">
       <header class="topbar chat-topbar">
-        <div class="brand-block">
-          <span class="brand">OUR SPACE</span>
-          <span class="private-label">PRIVATE ROOM</span>
-        </div>
-        <button id="chat-sign-out" class="text-button">Sign out</button>
+        <span></span>
+        <button id="chat-settings" class="settings-button" type="button" aria-label="Open settings">⚙</button>
       </header>
 
       <div class="chat-panel glass-panel">
         <div class="chat-heading">
           <div>
-            <p class="eyebrow">JUST YOU TWO</p>
             <h1 id="partner-name">Our space</h1>
-          </div>
-          <div id="partner-status" class="status-pill" aria-live="polite">
-            <span class="status-dot"></span>
-            Online
+            <p id="chat-presence" class="chat-presence">Online</p>
           </div>
         </div>
 
@@ -118,6 +126,22 @@
         </form>
       </div>
     </section>
+
+    <div id="settings-modal" class="settings-backdrop hidden" role="presentation">
+      <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="settings-heading"><div><p class="eyebrow">YOUR SPACE</p><h2 id="settings-title">Settings</h2></div><button id="settings-close" class="close-button" type="button" aria-label="Close settings">×</button></div>
+        <form id="settings-form" class="settings-form">
+          <label for="settings-name">Your name</label><input id="settings-name" maxlength="60">
+          <label for="settings-bio">Your bio</label><textarea id="settings-bio" maxlength="500" rows="3"></textarea>
+          <label for="settings-picture">Profile picture</label><input id="settings-picture" type="file" accept="image/*">
+          <label for="settings-partner-name">Partner display name</label><input id="settings-partner-name" maxlength="60">
+          <label for="settings-background">Entry background aura</label><input id="settings-background" type="color" value="#24103f">
+          <p id="settings-error" class="error" role="alert"></p>
+          <button type="submit">Save changes</button>
+        </form>
+        <div class="settings-actions"><button id="settings-unpair" class="settings-danger" type="button">Request unpair</button><button id="settings-sign-out" class="text-button" type="button">Sign out</button></div>
+      </section>
+    </div>
   </main>
 
   <script src="/socket.io/socket.io.js"></script>

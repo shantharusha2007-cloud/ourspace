@@ -11,7 +11,7 @@ const { OAuth2Client } = require('google-auth-library');
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'our-space-development-session-secret';
-const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || 'your_google_web_client_id_here.apps.googleusercontent.com';
+const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '595386365098-qc1iooesd3p2f1vh40m6t51na83keoqs.apps.googleusercontent.com';
 const googleClient = new OAuth2Client();
 const app = express();
 const server = http.createServer(app);
@@ -23,6 +23,8 @@ const messageSchema = new mongoose.Schema({
   senderName: { type: String, required: true },
   text: { type: String, default: '' },
   imageDataUrl: { type: String, default: null },
+  audioDataUrl: { type: String, default: null },
+  audioDuration: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 }, { _id: false });
 
@@ -108,7 +110,10 @@ app.post('/api/auth/google', async (req, res, next) => {
     if (!user) user = await User.create({ _id: crypto.randomUUID(), email, name: googleUser.name || '', profilePicture: googleUser.picture || null, pairCode: await createPairCode() });
     else if (!user.profilePicture && googleUser.picture) { user.profilePicture = googleUser.picture; await user.save(); }
     res.json({ token: createSession(user), isNew, user: await userView(user) });
-  } catch (error) { next(error); }
+  } catch (error) {
+    console.error('Google Auth Server Error:', error);
+    next(error);
+  }
 });
 
 app.put('/api/users/profile', async (req, res, next) => {
@@ -200,13 +205,18 @@ app.delete('/api/pair', async (req, res, next) => {
     await connectDatabase();
     const user = await authenticatedUser(req) || await User.findById(req.body.userId);
     if (!user) return res.status(401).json({ error: 'Authentication required.' });
-    const partner = user.partnerId ? await User.findById(user.partnerId) : null;
-    user.partnerId = null; user.pairedWith = null; user.roomId = null;
-    await user.save();
-    if (partner) { partner.partnerId = null; partner.pairedWith = null; partner.roomId = null; await partner.save(); io.to(`user:${partner.id}`).emit('unpaired'); }
+    await completeUnpair(user);
     res.json({ user: await userView(user) });
   } catch (error) { next(error); }
 });
+
+async function completeUnpair(user) {
+  const partner = user.partnerId ? await User.findById(user.partnerId) : null;
+  user.partnerId = null; user.pairedWith = null; user.roomId = null;
+  await user.save();
+  io.to(`user:${user.id}`).emit('unpaired');
+  if (partner) { partner.partnerId = null; partner.pairedWith = null; partner.roomId = null; await partner.save(); io.to(`user:${partner.id}`).emit('unpaired'); }
+}
 
 app.get('/api/rooms/:roomId/messages', async (req, res, next) => {
   try {
@@ -238,6 +248,19 @@ io.on('connection', (socket) => {
     if (user.roomId) socket.join(user.roomId);
   }).catch(() => socket.disconnect(true));
 
+  socket.on('unpair:request', async () => {
+    const currentUser = await getUser(socket.userId);
+    if (!currentUser?.partnerId) return;
+    io.to(`user:${currentUser.partnerId}`).emit('unpair:request', { userId: currentUser.id, userName: currentUser.name });
+  });
+
+  socket.on('unpair:respond', async ({ accepted } = {}) => {
+    if (!accepted) return;
+    const currentUser = await getUser(socket.userId);
+    if (!currentUser?.partnerId) return;
+    await completeUnpair(currentUser);
+  });
+
   socket.on('typing', async () => {
     const currentUser = await getUser(socket.userId);
     const room = currentUser && currentUser.roomId && await Room.findById(currentUser.roomId).lean();
@@ -264,16 +287,19 @@ io.on('connection', (socket) => {
     if (partnerId) io.to(`user:${partnerId}`).emit('message:reaction', { messageId, emoji, userId: socket.userId });
   });
 
-  socket.on('message:send', async ({ text, imageDataUrl }) => {
+  socket.on('message:send', async ({ text, imageDataUrl, audioDataUrl, audioDuration }) => {
     const currentUser = await getUser(socket.userId);
     const room = currentUser && currentUser.roomId && await Room.findById(currentUser.roomId);
     const cleanText = typeof text === 'string' ? text.trim() : '';
     const cleanImage = typeof imageDataUrl === 'string' ? imageDataUrl.trim() : '';
+    const cleanAudio = typeof audioDataUrl === 'string' ? audioDataUrl.trim() : '';
+    const cleanAudioDuration = Number.isFinite(audioDuration) ? Math.max(0, Math.min(audioDuration, 3600000)) : 0;
 
     if (!room || !room.memberIds.includes(socket.userId)) return;
-    if (!cleanText && !cleanImage) return;
+    if (!cleanText && !cleanImage && !cleanAudio) return;
     if (cleanText.length > 4000) return;
     if (cleanImage && !cleanImage.startsWith('data:image/')) return;
+    if (cleanAudio && !cleanAudio.startsWith('data:audio/')) return;
 
     const message = {
       id: crypto.randomUUID(),
@@ -281,6 +307,8 @@ io.on('connection', (socket) => {
       senderName: currentUser.name,
       text: cleanText,
       imageDataUrl: cleanImage || null,
+      audioDataUrl: cleanAudio || null,
+      audioDuration: cleanAudio ? cleanAudioDuration : 0,
       createdAt: new Date().toISOString(),
     };
 
