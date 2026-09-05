@@ -15,7 +15,20 @@ const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || process.env.GOO
 const googleClient = new OAuth2Client();
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const allowedOrigins = new Set([
+  'https://ourspace-app-gules.vercel.app',
+  ...(process.env.WEB_ORIGIN || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+]);
+const isAllowedOrigin = (origin) => !origin
+  || allowedOrigins.has(origin)
+  || /^https:\/\/ourspace-app-[a-z0-9-]+\.vercel\.app$/i.test(origin)
+  || /^http:\/\/localhost(?::\d+)?$/i.test(origin);
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    credentials: true,
+  },
+});
 
 const messageSchema = new mongoose.Schema({
   id: { type: String, required: true },
@@ -55,7 +68,12 @@ let databaseConnection;
 
 function connectDatabase() {
   if (!MONGODB_URI) return Promise.reject(new Error('MONGODB_URI is not configured.'));
-  if (!databaseConnection) databaseConnection = mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
+  if (!databaseConnection) {
+    databaseConnection = mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10000 }).catch((error) => {
+      databaseConnection = null;
+      throw error;
+    });
+  }
   return databaseConnection;
 }
 
@@ -93,6 +111,20 @@ async function authenticatedUser(req) {
   const session = sessionUser((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
   return session ? User.findById(session.id) : null;
 }
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  req.requestId = crypto.randomUUID();
+  if (isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Vary', 'Origin');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(isAllowedOrigin(origin) ? 204 : 403);
+  next();
+});
 
 app.use(express.json({ limit: '20mb' }));
 
@@ -228,8 +260,23 @@ app.get('/api/rooms/:roomId/messages', async (req, res, next) => {
 });
 
 app.use('/api', (error, req, res, next) => {
+  console.error('API request failed:', {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl,
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    mongoReadyState: mongoose.connection.readyState,
+  });
   if (res.headersSent) return next(error);
-  res.status(500).json({ error: 'The server could not complete that request.' });
+  const status = error.statusCode || error.status || (error.type === 'entity.parse.failed' ? 400 : 500);
+  res.status(status).json({ error: status === 400 ? 'The request body is invalid JSON.' : 'The server could not complete that request.', requestId: req.requestId });
+});
+
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API route not found.', requestId: req.requestId });
+  res.status(404).send('Not found');
 });
 
 io.use((socket, next) => {
